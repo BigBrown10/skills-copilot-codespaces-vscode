@@ -1,0 +1,123 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "sleepApplication": false,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  },
+  "services": [
+    {
+      "name": "postgres",
+      "icon": "postgres",
+      "source": {
+        "image": "postgres:15-alpine"
+      },
+      "variables": {
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "${{POSTGRES_PASSWORD}}",
+        "POSTGRES_DB": "chatbot_platform"
+      },
+      "volumes": [
+        {
+          "name": "postgres_data",
+          "mountPath": "/var/lib/postgresql/data"
+        }
+      ]
+    },
+    {
+      "name": "redis",
+      "icon": "redis",
+      "source": {
+        "image": "redis:7-alpine"
+      },
+      "variables": {
+        "REDIS_PASSWORD": "${{REDIS_PASSWORD}}"
+      },
+      "volumes": [
+        {
+          "name": "redis_data",
+          "mountPath": "/data"
+        }
+      ]
+    },
+    {
+      "name": "admin-api",
+      "icon": "nestjs",
+      "root": "backend/admin-api",
+      "buildCommand": "npm install && npm run build",
+      "startCommand": "npm run start:prod",
+      "variables": {
+        "DATABASE_URL": "${{Postgres.DATABASE_URL}}",
+        "REDIS_HOST": "${{Redis.REDIS_HOST}}",
+        "REDIS_PORT": "${{Redis.REDIS_PORT}}",
+        "JWT_SECRET": "${{JWT_SECRET}}",
+        "JWT_EXPIRATION": "7d",
+        "PORT": "4000"
+      },
+      "healthcheck": {
+        "path": "/health",
+        "timeout": 100,
+        "interval": 10
+      }
+    },
+    {
+      "name": "conversation-engine",
+      "icon": "python",
+      "root": "backend/conversation-engine",
+      "buildCommand": "pip install -r requirements.txt",
+      "startCommand": "uvicorn main:app --host 0.0.0.0 --port $PORT",
+      "variables": {
+        "DATABASE_URL": "${{Postgres.DATABASE_URL}}",
+        "REDIS_HOST": "${{Redis.REDIS_HOST}}",
+        "REDIS_PORT": "${{Redis.REDIS_PORT}}",
+        "GOOGLE_GEMINI_API_KEY": "${{GOOGLE_GEMINI_API_KEY}}",
+        "GEMINI_MODEL": "gemini-pro",
+        "PORT": "8000"
+      },
+      "healthcheck": {
+        "path": "/health",
+        "timeout": 100,
+        "interval": 10
+      }
+    },
+    {
+      "name": "webhook-handler",
+      "icon": "nodejs",
+      "root": "backend/webhook-handler",
+      "buildCommand": "npm install && npm run build",
+      "startCommand": "npm run start",
+      "variables": {
+        "REDIS_HOST": "${{Redis.REDIS_HOST}}",
+        "REDIS_PORT": "${{Redis.REDIS_PORT}}",
+        "WHATSAPP_ACCESS_TOKEN": "${{WHATSAPP_ACCESS_TOKEN}}",
+        "WHATSAPP_WEBHOOK_VERIFY_TOKEN": "${{WHATSAPP_WEBHOOK_VERIFY_TOKEN}}",
+        "WHATSAPP_PHONE_NUMBER_ID": "${{WHATSAPP_PHONE_NUMBER_ID}}",
+        "TELEGRAM_BOT_TOKEN": "${{TELEGRAM_BOT_TOKEN}}",
+        "TELEGRAM_WEBHOOK_SECRET": "${{TELEGRAM_WEBHOOK_SECRET}}",
+        "CONVERSATION_ENGINE_URL": "${{ConversationEngine.CONVERSATION_ENGINE_URL}}",
+        "PORT": "5000"
+      }
+    },
+    {
+      "name": "frontend",
+      "icon": "nextjs",
+      "root": "frontend",
+      "buildCommand": "npm install && npm run build",
+      "startCommand": "npm run start",
+      "variables": {
+        "NEXT_PUBLIC_API_URL": "${{AdminApi.ADMIN_API_URL}}",
+        "NEXTAUTH_URL": "${{RAILWAY_PUBLIC_DOMAIN}}",
+        "NEXTAUTH_SECRET": "${{SESSION_SECRET}}"
+      },
+      "healthcheck": {
+        "path": "/",
+        "timeout": 100,
+        "interval": 10
+      }
+    }
+  ]
+}
