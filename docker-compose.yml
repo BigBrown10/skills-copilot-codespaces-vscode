@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: chatbot-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-chatbot_platform}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatbot-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  admin-api:
+    build:
+      context: ./backend/admin-api
+      dockerfile: Dockerfile
+    container_name: chatbot-admin-api
+    ports:
+      - "${ADMIN_API_PORT:-4000}:4000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION}
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 4000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/admin-api:/app
+      - /app/node_modules
+    command: npm run start:dev
+
+  conversation-engine:
+    build:
+      context: ./backend/conversation-engine
+      dockerfile: Dockerfile
+    container_name: chatbot-conversation-engine
+    ports:
+      - "${CONVERSATION_ENGINE_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      GOOGLE_GEMINI_API_KEY: ${GOOGLE_GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-pro}
+      PORT: 8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/conversation-engine:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  webhook-handler:
+    build:
+      context: ./backend/webhook-handler
+      dockerfile: Dockerfile
+    container_name: chatbot-webhook-handler
+    ports:
+      - "${WEBHOOK_HANDLER_PORT:-5000}:5000"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN}
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      CONVERSATION_ENGINE_URL: http://conversation-engine:8000
+      PORT: 5000
+    depends_on:
+      redis:
+        condition: service_healthy
+      conversation-engine:
+        condition: service_started
+    volumes:
+      - ./backend/webhook-handler:/app
+      - /app/node_modules
+    command: npm run dev
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: chatbot-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${SESSION_SECRET}
+    depends_on:
+      - admin-api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+
+volumes:
+  postgres_data:
+  redis_data:
