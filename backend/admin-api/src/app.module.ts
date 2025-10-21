@@ -6,6 +6,7 @@ import { BusinessesModule } from './businesses/businesses.module';
 import { BotsModule } from './bots/bots.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { HealthController } from './health.controller';
 import { PrismaService } from './prisma.service';
 
 @Module({
@@ -20,6 +21,7 @@ import { PrismaService } from './prisma.service';
     ConversationsModule,
     AnalyticsModule,
   ],
+  controllers: [HealthController],
   providers: [PrismaService],
 })
 export class AppModule {}
