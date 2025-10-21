@@ -1,0 +1,152 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String      @id @default(uuid())
+  email         String      @unique
+  password      String
+  name          String?
+  role          UserRole    @default(USER)
+  businessId    String?
+  business      Business?   @relation(fields: [businessId], references: [id])
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@map("users")
+}
+
+model Business {
+  id            String         @id @default(uuid())
+  name          String
+  industry      String?
+  website       String?
+  phone         String?
+  planType      PlanType       @default(FREE)
+  users         User[]
+  bots          Bot[]
+  conversations Conversation[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("businesses")
+}
+
+model Bot {
+  id              String         @id @default(uuid())
+  name            String
+  description     String?
+  channel         Channel
+  businessId      String
+  business        Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  status          BotStatus      @default(INACTIVE)
+  systemPrompt    String?
+  welcomeMessage  String?
+  config          Json?
+  conversations   Conversation[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("bots")
+}
+
+model Conversation {
+  id            String            @id @default(uuid())
+  botId         String
+  bot           Bot               @relation(fields: [botId], references: [id], onDelete: Cascade)
+  businessId    String
+  business      Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId        String            // External user ID (WhatsApp/Telegram)
+  userName      String?
+  channel       Channel
+  status        ConversationStatus @default(ACTIVE)
+  messages      Message[]
+  bookings      Booking[]
+  metadata      Json?
+  startedAt     DateTime          @default(now())
+  endedAt       DateTime?
+  updatedAt     DateTime          @updatedAt
+
+  @@map("conversations")
+}
+
+model Message {
+  id              String       @id @default(uuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role            MessageRole
+  content         String
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+
+  @@map("messages")
+}
+
+model Booking {
+  id              String       @id @default(uuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  customerName    String
+  customerEmail   String?
+  customerPhone   String
+  serviceType     String
+  scheduledAt     DateTime
+  duration        Int          // Duration in minutes
+  status          BookingStatus @default(PENDING)
+  notes           String?
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@map("bookings")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum PlanType {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum Channel {
+  WHATSAPP
+  TELEGRAM
+}
+
+enum BotStatus {
+  ACTIVE
+  INACTIVE
+  PAUSED
+}
+
+enum ConversationStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
