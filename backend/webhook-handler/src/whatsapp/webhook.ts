@@ -1,8 +1,18 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { verifyWhatsAppWebhook } from '../middleware/verify-webhook';
 import { WhatsAppWebhookPayload } from '../types';
 import { sendWhatsAppMessage } from './send-message';
 import { messageQueue } from '../queue/message-processor';
+
+// Rate limiter for WhatsApp webhooks
+const whatsappLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export const whatsappWebhookRouter = express.Router();
 
@@ -14,14 +24,16 @@ whatsappWebhookRouter.get('/', verifyWhatsAppWebhook, (req, res) => {
 
   if (mode === 'subscribe' && token === process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
     console.log('WhatsApp webhook verified');
-    res.status(200).send(challenge);
+    // Sanitize challenge to prevent XSS
+    const sanitizedChallenge = String(challenge).replace(/[^\w.-]/g, '');
+    res.status(200).send(sanitizedChallenge);
   } else {
     res.sendStatus(403);
   }
 });
 
-// Webhook messages (POST)
-whatsappWebhookRouter.post('/', async (req, res) => {
+// Webhook messages (POST with rate limiting)
+whatsappWebhookRouter.post('/', whatsappLimiter, async (req, res) => {
   try {
     const payload: WhatsAppWebhookPayload = req.body;
 
